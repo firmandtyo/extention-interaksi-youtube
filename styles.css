@@ -103,6 +103,21 @@ h2 {
   color: #666;
 }
 
+.niche-input {
+  flex-direction: column;
+  align-items: flex-start !important;
+  gap: 4px !important;
+}
+
+.niche-input label {
+  font-weight: 600;
+  color: #ff9800;
+}
+
+.niche-input .input-text {
+  width: 100%;
+}
+
 .comment-list {
   max-height: 150px;
   overflow-y: auto;

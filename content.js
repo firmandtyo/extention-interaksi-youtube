@@ -2,12 +2,14 @@
 let botRunning = false;
 let currentSettings = null;
 let actionTimeout = null;
+let videoIndex = 0; // Track which video in search results to watch next
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'start') {
     currentSettings = request.settings;
     botRunning = true;
+    videoIndex = 0;
     startBot();
     sendResponse({ status: 'started' });
   }
@@ -48,7 +50,38 @@ async function startBot() {
   
   if (!botRunning) return;
   
+  // If niche keyword is set, navigate to search results first
+  if (currentSettings.nicheKeyword) {
+    sendLog(`🔍 Niche mode: "${currentSettings.nicheKeyword}"`, 'info');
+    await navigateToNicheSearch();
+  }
+  
   await runInteractionCycle();
+}
+
+async function navigateToNicheSearch() {
+  const keyword = currentSettings.nicheKeyword;
+  const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(keyword)}`;
+  
+  // Check if already on search page for this keyword
+  const currentUrl = window.location.href;
+  if (currentUrl.includes('/results') && currentUrl.includes(encodeURIComponent(keyword))) {
+    sendLog(`Sudah di halaman pencarian "${keyword}"`, 'info');
+    return;
+  }
+  
+  // Check if already watching a video (might be from a previous cycle)
+  if (window.location.pathname.includes('/watch')) {
+    sendLog('Sudah di halaman video, lanjutkan...', 'info');
+    return;
+  }
+  
+  // Navigate to search
+  sendLog(`Mencari video niche: "${keyword}"...`, 'info');
+  window.location.href = searchUrl;
+  
+  // Wait for navigation
+  await sleep(5000);
 }
 
 async function runInteractionCycle() {
@@ -56,9 +89,21 @@ async function runInteractionCycle() {
     try {
       // Check if we're on a video page
       if (!window.location.pathname.includes('/watch')) {
-        sendLog('Bukan halaman video, mencari video...', 'info');
-        await clickFirstVideo();
-        await sleep(3000);
+        // If niche keyword set, look for videos in search results
+        if (currentSettings.nicheKeyword) {
+          // Check if we're on search results page
+          if (window.location.pathname.includes('/results')) {
+            sendLog('Memilih video dari hasil pencarian niche...', 'info');
+            await clickVideoFromSearch();
+          } else {
+            // Navigate to search page
+            await navigateToNicheSearch();
+          }
+        } else {
+          sendLog('Bukan halaman video, mencari video...', 'info');
+          await clickFirstVideo();
+        }
+        await sleep(4000);
         continue;
       }
       
@@ -250,6 +295,12 @@ async function autoComment() {
 
 async function goToNextVideo() {
   try {
+    // If niche keyword is set, go back to search results and pick next video
+    if (currentSettings.nicheKeyword) {
+      await goToNextNicheVideo();
+      return;
+    }
+    
     // Method 1: Click next button in player
     let nextBtn = document.querySelector('.ytp-next-button');
     
@@ -279,6 +330,65 @@ async function goToNextVideo() {
     sendLog('Tidak bisa pindah ke video selanjutnya', 'error');
   } catch (e) {
     sendLog(`Gagal next video: ${e.message}`, 'error');
+  }
+}
+
+async function goToNextNicheVideo() {
+  const keyword = currentSettings.nicheKeyword;
+  videoIndex++;
+  
+  sendLog(`🔍 Kembali ke pencarian "${keyword}" (video #${videoIndex + 1})...`, 'info');
+  
+  // Navigate back to search results
+  const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(keyword)}`;
+  window.location.href = searchUrl;
+  
+  // Wait for page to load - the interaction cycle will pick up and click next video
+  await sleep(5000);
+}
+
+async function clickVideoFromSearch() {
+  try {
+    // Get all video results from search page (exclude ads, shorts, etc.)
+    const videoRenderers = document.querySelectorAll('ytd-video-renderer a#thumbnail, ytd-video-renderer #video-title');
+    
+    if (videoRenderers.length === 0) {
+      sendLog('Tidak menemukan video di hasil pencarian', 'error');
+      return;
+    }
+    
+    // Filter to only get thumbnail links (actual video links)
+    const videoLinks = document.querySelectorAll('ytd-video-renderer a#thumbnail');
+    
+    if (videoLinks.length > 0) {
+      // Use videoIndex to pick sequential videos, wrap around if needed
+      const idx = videoIndex % videoLinks.length;
+      
+      // Scroll to the video first if needed
+      const videoElement = videoLinks[idx];
+      videoElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await sleep(1000);
+      
+      // Get video title for logging
+      const renderer = videoElement.closest('ytd-video-renderer');
+      const titleEl = renderer ? renderer.querySelector('#video-title') : null;
+      const title = titleEl ? titleEl.textContent.trim().substring(0, 50) : 'Unknown';
+      
+      videoElement.click();
+      sendLog(`▶️ Membuka video #${idx + 1}: "${title}..."`, 'success');
+      videoIndex++;
+    } else {
+      // Fallback: try any video link on the page
+      const anyVideo = document.querySelector('a#thumbnail[href*="/watch"]');
+      if (anyVideo) {
+        anyVideo.click();
+        sendLog('Membuka video dari hasil pencarian 🎬', 'success');
+      } else {
+        sendLog('Tidak ada video ditemukan di halaman pencarian', 'error');
+      }
+    }
+  } catch (e) {
+    sendLog(`Error memilih video: ${e.message}`, 'error');
   }
 }
 

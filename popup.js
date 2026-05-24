@@ -33,6 +33,7 @@ function loadSettings() {
       document.getElementById('autoLike').checked = result.settings.autoLike ?? true;
       document.getElementById('autoComment').checked = result.settings.autoComment ?? true;
       document.getElementById('autoNext').checked = result.settings.autoNext ?? true;
+      document.getElementById('nicheKeyword').value = result.settings.nicheKeyword ?? '';
       document.getElementById('watchDuration').value = result.settings.watchDuration ?? 30;
       document.getElementById('actionDelay').value = result.settings.actionDelay ?? 3;
     }
@@ -50,6 +51,7 @@ function saveSettings() {
     autoLike: document.getElementById('autoLike').checked,
     autoComment: document.getElementById('autoComment').checked,
     autoNext: document.getElementById('autoNext').checked,
+    nicheKeyword: document.getElementById('nicheKeyword').value.trim(),
     watchDuration: parseInt(document.getElementById('watchDuration').value) || 30,
     actionDelay: parseInt(document.getElementById('actionDelay').value) || 3
   };
@@ -172,7 +174,7 @@ document.getElementById('clearLogBtn').addEventListener('click', () => {
 });
 
 // Setting change listeners
-['autoLike', 'autoComment', 'autoNext', 'watchDuration', 'actionDelay'].forEach(id => {
+['autoLike', 'autoComment', 'autoNext', 'watchDuration', 'actionDelay', 'nicheKeyword'].forEach(id => {
   document.getElementById(id).addEventListener('change', saveSettings);
 });
 
@@ -201,6 +203,7 @@ document.getElementById('startBtn').addEventListener('click', () => {
           autoLike: document.getElementById('autoLike').checked,
           autoComment: document.getElementById('autoComment').checked,
           autoNext: document.getElementById('autoNext').checked,
+          nicheKeyword: document.getElementById('nicheKeyword').value.trim(),
           watchDuration: parseInt(document.getElementById('watchDuration').value) || 30,
           actionDelay: parseInt(document.getElementById('actionDelay').value) || 3,
           comments: comments
