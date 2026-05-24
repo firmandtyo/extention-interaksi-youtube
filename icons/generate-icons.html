@@ -1,0 +1,30 @@
+<!-- Open this file in browser to generate icon PNGs -->
+<!-- Or use any 16x16, 48x48, 128x128 PNG icons -->
+<canvas id="c16" width="16" height="16"></canvas>
+<canvas id="c48" width="48" height="48"></canvas>
+<canvas id="c128" width="128" height="128"></canvas>
+<script>
+function drawIcon(canvas) {
+  const ctx = canvas.getContext('2d');
+  const s = canvas.width;
+  
+  // Background circle
+  ctx.fillStyle = '#ff0000';
+  ctx.beginPath();
+  ctx.arc(s/2, s/2, s/2 - 1, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Play triangle
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(s * 0.35, s * 0.25);
+  ctx.lineTo(s * 0.35, s * 0.75);
+  ctx.lineTo(s * 0.75, s * 0.5);
+  ctx.closePath();
+  ctx.fill();
+}
+
+['c16', 'c48', 'c128'].forEach(id => {
+  drawIcon(document.getElementById(id));
+});
+</script>

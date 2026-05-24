@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Auto Interaction</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>🎬 YT Auto Interaction</h1>
+    
+    <div class="status-bar" id="statusBar">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Tidak Aktif</span>
+    </div>
+
+    <!-- Settings Section -->
+    <div class="section">
+      <h2>⚙️ Pengaturan</h2>
+      
+      <div class="setting-item">
+        <label>
+          <input type="checkbox" id="autoLike" checked>
+          Auto Like Video
+        </label>
+      </div>
+      
+      <div class="setting-item">
+        <label>
+          <input type="checkbox" id="autoComment" checked>
+          Auto Komentar
+        </label>
+      </div>
+      
+      <div class="setting-item">
+        <label>
+          <input type="checkbox" id="autoNext" checked>
+          Auto Next Video
+        </label>
+      </div>
+
+      <div class="setting-item">
+        <label>Durasi Tonton (detik):</label>
+        <input type="number" id="watchDuration" min="5" max="600" value="30" class="input-number">
+      </div>
+
+      <div class="setting-item">
+        <label>Delay antar aksi (detik):</label>
+        <input type="number" id="actionDelay" min="1" max="60" value="3" class="input-number">
+      </div>
+    </div>
+
+    <!-- Comments Section -->
+    <div class="section">
+      <h2>💬 Daftar Komentar Random</h2>
+      <div class="comment-list" id="commentList">
+        <!-- Comments will be rendered here -->
+      </div>
+      <div class="comment-input-group">
+        <input type="text" id="newComment" placeholder="Tambah komentar baru..." class="input-text">
+        <button id="addCommentBtn" class="btn btn-add">+</button>
+      </div>
+      <button id="resetCommentsBtn" class="btn btn-secondary btn-full">Reset ke Default</button>
+    </div>
+
+    <!-- Control Buttons -->
+    <div class="section controls">
+      <button id="startBtn" class="btn btn-primary btn-full">▶️ Mulai</button>
+      <button id="stopBtn" class="btn btn-danger btn-full" disabled>⏹️ Berhenti</button>
+    </div>
+
+    <!-- Log Section -->
+    <div class="section">
+      <h2>📋 Log Aktivitas</h2>
+      <div class="log-container" id="logContainer">
+        <p class="log-empty">Belum ada aktivitas...</p>
+      </div>
+      <button id="clearLogBtn" class="btn btn-secondary btn-full">Hapus Log</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
