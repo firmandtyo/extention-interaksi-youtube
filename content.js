@@ -2,6 +2,8 @@
 let botRunning = false;
 let currentSettings = null;
 let actionTimeout = null;
+let urlObserver = null;
+let lastUrl = window.location.href;
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -54,8 +56,55 @@ function setVideoIndex(idx) {
   chrome.storage.local.set({ videoIndex: idx });
 }
 
+// Watch for YouTube SPA navigation (URL changes without page reload)
+function startUrlWatcher() {
+  if (urlObserver) return;
+  
+  // Use MutationObserver on title to detect navigation
+  urlObserver = setInterval(() => {
+    if (!botRunning) return;
+    
+    const currentUrl = window.location.href;
+    if (currentUrl !== lastUrl) {
+      const oldUrl = lastUrl;
+      lastUrl = currentUrl;
+      onUrlChanged(oldUrl, currentUrl);
+    }
+  }, 1000);
+}
+
+function stopUrlWatcher() {
+  if (urlObserver) {
+    clearInterval(urlObserver);
+    urlObserver = null;
+  }
+}
+
+async function onUrlChanged(oldUrl, newUrl) {
+  if (!botRunning) return;
+  
+  sendLog(`Navigasi terdeteksi...`, 'info');
+  
+  // Navigated from search to video - start interaction
+  if (newUrl.includes('/watch') && !oldUrl.includes('/watch')) {
+    sendLog('Halaman video terdeteksi, mulai interaksi...', 'success');
+    await sleep(3000); // Wait for video page to load
+    await runInteractionCycle();
+  }
+  
+  // Navigated to search results - click video
+  if (newUrl.includes('/results') && !oldUrl.includes('/results')) {
+    sendLog('Halaman pencarian terdeteksi, memilih video...', 'info');
+    await sleep(3000);
+    await clickVideoFromSearch();
+  }
+}
+
 async function startBot() {
   sendLog('Bot dimulai di halaman YouTube', 'success');
+  
+  // Start URL watcher for SPA navigation
+  startUrlWatcher();
   
   // Wait for page to fully load
   await sleep(3000);
@@ -63,6 +112,7 @@ async function startBot() {
   if (!botRunning) return;
   
   const currentUrl = window.location.href;
+  lastUrl = currentUrl;
   const nicheKeyword = currentSettings.nicheKeyword;
   
   if (nicheKeyword) {
@@ -80,7 +130,8 @@ async function startBot() {
       sendLog(`Mencari video niche: "${nicheKeyword}"...`, 'info');
       await sleep(2000);
       await clickVideoFromSearch();
-      // After clicking, page will navigate - content script restarts
+      // YouTube may use SPA navigation - urlWatcher will handle it
+      // Or page reload - auto-resume will handle it
       return;
     }
     
@@ -88,7 +139,6 @@ async function startBot() {
     sendLog(`Mencari video niche: "${nicheKeyword}"...`, 'info');
     const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(nicheKeyword)}`;
     window.location.href = searchUrl;
-    // Page will reload, content script will restart and hit Case 2
     return;
   }
   
@@ -102,25 +152,28 @@ async function runInteractionCycle() {
       // Check if we're on a video page
       if (!window.location.pathname.includes('/watch')) {
         if (currentSettings.nicheKeyword) {
-          // Should not happen often since startBot handles navigation
-          // But just in case, click video from search
           if (window.location.pathname.includes('/results')) {
             await clickVideoFromSearch();
-            return; // Page will reload
+            // Wait for SPA navigation or page reload
+            await sleep(5000);
+            // If still not on video page after wait, check again
+            if (!window.location.pathname.includes('/watch')) {
+              continue;
+            }
           } else {
-            // Navigate to search
             const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(currentSettings.nicheKeyword)}`;
             window.location.href = searchUrl;
-            return; // Page will reload
+            return;
           }
         } else {
           sendLog('Bukan halaman video, mencari video...', 'info');
           await clickFirstVideo();
-          await sleep(4000);
+          await sleep(5000);
           continue;
         }
       }
       
+      // === NOW ON VIDEO PAGE ===
       sendLog(`Menonton video selama ${currentSettings.watchDuration} detik...`, 'info');
       
       // Watch the video for specified duration
@@ -131,6 +184,7 @@ async function runInteractionCycle() {
       
       // Auto Like
       if (currentSettings.autoLike) {
+        sendLog('Mencoba like video...', 'info');
         await sleep(currentSettings.actionDelay * 1000);
         await autoLike();
       }
@@ -139,6 +193,7 @@ async function runInteractionCycle() {
       
       // Auto Comment
       if (currentSettings.autoComment) {
+        sendLog('Mencoba komentar...', 'info');
         await sleep(currentSettings.actionDelay * 1000);
         await autoComment();
       }
@@ -149,11 +204,19 @@ async function runInteractionCycle() {
       if (currentSettings.autoNext) {
         await sleep(currentSettings.actionDelay * 1000);
         await goToNextVideo();
-        // If niche mode, page will reload - exit loop
+        
         if (currentSettings.nicheKeyword) {
-          return;
+          // For niche mode: wait for navigation then continue
+          // URL watcher or page reload will handle next cycle
+          await sleep(5000);
+          // If URL changed to /results, the watcher handles clicking next video
+          // If URL changed to /watch (direct), continue the loop
+          if (window.location.pathname.includes('/watch')) {
+            continue; // New video loaded via SPA
+          }
+          return; // Page will reload or watcher handles it
         }
-        await sleep(5000); // Wait for new video to load
+        await sleep(5000);
       } else {
         sendLog('Siklus selesai (auto next tidak aktif)', 'info');
         stopBot();
@@ -181,31 +244,48 @@ async function ensureVideoPlaying() {
 
 async function autoLike() {
   try {
-    let likeButton = document.querySelector('like-button-view-model button');
+    // Wait for like button to be available
+    await sleep(2000);
     
+    let likeButton = null;
+    
+    // Method 1: Modern YouTube like button (2024+)
+    likeButton = document.querySelector('like-button-view-model button');
+    
+    // Method 2: Segmented like/dislike button
+    if (!likeButton) {
+      likeButton = document.querySelector('ytd-segmented-like-dislike-button-renderer button:first-child');
+    }
+    
+    // Method 3: Toggle button renderer
     if (!likeButton) {
       likeButton = document.querySelector('#top-level-buttons-computed ytd-toggle-button-renderer:first-child button');
     }
     
+    // Method 4: aria-label based
     if (!likeButton) {
-      likeButton = document.querySelector('ytd-menu-renderer yt-button-shape button[aria-label*="like" i]');
-    }
-    
-    if (!likeButton) {
-      const buttons = document.querySelectorAll('button[aria-label]');
-      for (const btn of buttons) {
-        const label = btn.getAttribute('aria-label')?.toLowerCase() || '';
-        if ((label.includes('like') && !label.includes('dislike')) || 
+      const allButtons = document.querySelectorAll('button[aria-label]');
+      for (const btn of allButtons) {
+        const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+        // Match "like this video" or just "like" but not "dislike"
+        if ((label.includes('like') && !label.includes('dislike') && !label.includes('unlike')) ||
             (label.includes('suka') && !label.includes('tidak'))) {
           likeButton = btn;
           break;
         }
       }
     }
+    
+    // Method 5: Find by icon path in SVG
+    if (!likeButton) {
+      const shapes = document.querySelectorAll('#segmented-like-button button, #like-button button');
+      if (shapes.length > 0) {
+        likeButton = shapes[0];
+      }
+    }
 
     if (likeButton) {
-      const isLiked = likeButton.getAttribute('aria-pressed') === 'true' || 
-                      likeButton.classList.contains('style-default-active');
+      const isLiked = likeButton.getAttribute('aria-pressed') === 'true';
       
       if (!isLiked) {
         likeButton.click();
@@ -231,65 +311,132 @@ async function autoComment() {
     
     // Scroll down to load comments section
     sendLog('Scroll ke kolom komentar...', 'info');
-    window.scrollBy(0, 500);
+    
+    // Scroll multiple times to ensure comments section loads
+    for (let i = 0; i < 3; i++) {
+      window.scrollBy(0, 400);
+      await sleep(1000);
+    }
+    
     await sleep(2000);
     
-    // Find the comment input placeholder
-    const commentPlaceholder = document.querySelector('#placeholder-area, #simplebox-placeholder, ytd-comment-simplebox-renderer #placeholder-area');
+    // Find the comment input placeholder and click it
+    let commentPlaceholder = document.querySelector('#placeholder-area');
+    if (!commentPlaceholder) {
+      commentPlaceholder = document.querySelector('#simplebox-placeholder');
+    }
+    if (!commentPlaceholder) {
+      commentPlaceholder = document.querySelector('ytd-comment-simplebox-renderer #placeholder-area');
+    }
+    if (!commentPlaceholder) {
+      // Try finding by the placeholder text
+      const placeholders = document.querySelectorAll('[placeholder], [aria-placeholder]');
+      for (const el of placeholders) {
+        const ph = (el.getAttribute('placeholder') || el.getAttribute('aria-placeholder') || '').toLowerCase();
+        if (ph.includes('komentar') || ph.includes('comment') || ph.includes('add a comment')) {
+          commentPlaceholder = el;
+          break;
+        }
+      }
+    }
     
     if (commentPlaceholder) {
       commentPlaceholder.click();
-      await sleep(1500);
+      sendLog('Kolom komentar diklik...', 'info');
+      await sleep(2000);
+    } else {
+      sendLog('Placeholder komentar tidak ditemukan', 'error');
+      return;
     }
     
-    // Find the actual comment input box
-    let commentBox = document.querySelector('#contenteditable-root, #creation-box #contenteditable-root');
+    // Find the actual comment input box (contenteditable div)
+    let commentBox = document.querySelector('#contenteditable-root');
     
     if (!commentBox) {
-      commentBox = document.querySelector('div[contenteditable="true"][aria-label*="komentar" i], div[contenteditable="true"][aria-label*="comment" i]');
+      commentBox = document.querySelector('#creation-box #contenteditable-root');
     }
     
     if (!commentBox) {
-      commentBox = document.querySelector('#comment-dialog div[contenteditable="true"], ytd-comment-simplebox-renderer div[contenteditable="true"]');
+      commentBox = document.querySelector('div[contenteditable="true"][aria-label*="komentar" i]');
+    }
+    
+    if (!commentBox) {
+      commentBox = document.querySelector('div[contenteditable="true"][aria-label*="comment" i]');
+    }
+    
+    if (!commentBox) {
+      commentBox = document.querySelector('div[contenteditable="true"][aria-label*="Add" i]');
+    }
+
+    if (!commentBox) {
+      // Last resort: any contenteditable in comments area
+      commentBox = document.querySelector('ytd-comment-simplebox-renderer div[contenteditable="true"]');
     }
     
     if (commentBox) {
+      // Focus the comment box
       commentBox.focus();
       await sleep(500);
       
+      // Clear and set comment using execCommand for better compatibility
       commentBox.textContent = '';
-      commentBox.textContent = comment;
+      document.execCommand('insertText', false, comment);
       
-      commentBox.dispatchEvent(new Event('input', { bubbles: true }));
+      // Also dispatch input event
+      commentBox.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
       commentBox.dispatchEvent(new Event('change', { bubbles: true }));
       
-      await sleep(1000);
+      sendLog(`Komentar diketik: "${comment.substring(0, 30)}..."`, 'info');
+      await sleep(2000);
       
-      let submitBtn = document.querySelector('#submit-button yt-button-shape button, #submit-button button, tp-yt-paper-button#submit-button');
+      // Find and click submit/komentar button
+      let submitBtn = null;
       
+      // Method 1: Direct selector
+      submitBtn = document.querySelector('#submit-button yt-button-shape button');
+      
+      // Method 2: paper button
       if (!submitBtn) {
-        const buttons = document.querySelectorAll('button, yt-button-shape button');
-        for (const btn of buttons) {
-          const text = btn.textContent?.toLowerCase() || '';
-          const label = btn.getAttribute('aria-label')?.toLowerCase() || '';
-          if (text.includes('komentar') || text.includes('comment') || 
-              label.includes('komentar') || label.includes('comment')) {
-            if (!text.includes('sort') && !text.includes('urutkan')) {
-              submitBtn = btn;
-              break;
-            }
+        submitBtn = document.querySelector('tp-yt-paper-button#submit-button');
+      }
+      
+      // Method 3: by aria-label
+      if (!submitBtn) {
+        submitBtn = document.querySelector('#submit-button button');
+      }
+      
+      // Method 4: search by text content
+      if (!submitBtn) {
+        const allBtns = document.querySelectorAll('#comments button, #comment-dialog button');
+        for (const btn of allBtns) {
+          const text = (btn.textContent || '').trim().toLowerCase();
+          const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+          if ((text === 'komentar' || text === 'comment' || text === 'comentar') ||
+              (label.includes('comment') || label.includes('komentar'))) {
+            submitBtn = btn;
+            break;
           }
         }
       }
       
-      if (submitBtn && !submitBtn.disabled) {
-        submitBtn.click();
-        sendLog(`Komentar dikirim: "${comment.substring(0, 40)}..."`, 'success');
+      if (submitBtn) {
+        // Check if button is enabled
+        if (submitBtn.disabled || submitBtn.getAttribute('aria-disabled') === 'true') {
+          sendLog('Tombol kirim masih disabled, tunggu...', 'info');
+          await sleep(2000);
+        }
+        
+        if (!submitBtn.disabled && submitBtn.getAttribute('aria-disabled') !== 'true') {
+          submitBtn.click();
+          sendLog(`Komentar dikirim: "${comment.substring(0, 40)}..."`, 'success');
+        } else {
+          sendLog('Tombol kirim komentar masih disabled', 'error');
+        }
       } else {
-        sendLog('Tombol kirim komentar tidak tersedia/disabled', 'error');
+        sendLog('Tombol submit komentar tidak ditemukan', 'error');
       }
     } else {
-      sendLog('Kolom komentar tidak ditemukan (mungkin perlu login)', 'error');
+      sendLog('Kolom komentar tidak ditemukan (pastikan sudah login)', 'error');
     }
   } catch (e) {
     sendLog(`Gagal komentar: ${e.message}`, 'error');
@@ -310,7 +457,6 @@ async function goToNextVideo() {
       // Navigate back to search results
       const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(keyword)}`;
       window.location.href = searchUrl;
-      // Page will reload - content script will restart and pick next video
       return;
     }
     
@@ -351,27 +497,27 @@ async function clickVideoFromSearch() {
     // Get video index from storage
     const idx = await getVideoIndex();
     
-    // Get all video results from search page
-    const videoLinks = document.querySelectorAll('ytd-video-renderer a#thumbnail[href*="/watch"]');
+    // Get all video results (multiple selectors for compatibility)
+    let videoLinks = document.querySelectorAll('ytd-video-renderer a#thumbnail[href*="/watch"]');
+    
+    // Fallback selectors
+    if (videoLinks.length === 0) {
+      videoLinks = document.querySelectorAll('a#thumbnail[href*="/watch"]');
+    }
     
     if (videoLinks.length === 0) {
-      // Try alternative selectors
-      const altLinks = document.querySelectorAll('a#thumbnail[href*="/watch"]');
-      if (altLinks.length > 0) {
-        const selectedIdx = idx % altLinks.length;
-        altLinks[selectedIdx].click();
-        sendLog(`▶️ Membuka video #${selectedIdx + 1} dari pencarian`, 'success');
+      videoLinks = document.querySelectorAll('a[href*="/watch"]');
+    }
+    
+    if (videoLinks.length === 0) {
+      sendLog('Tidak menemukan video, tunggu loading...', 'error');
+      await sleep(5000);
+      // Retry
+      videoLinks = document.querySelectorAll('a#thumbnail[href*="/watch"], ytd-video-renderer a[href*="/watch"]');
+      if (videoLinks.length === 0) {
+        sendLog('Tetap tidak ada video ditemukan', 'error');
         return;
       }
-      sendLog('Tidak menemukan video di hasil pencarian, tunggu...', 'error');
-      await sleep(3000);
-      // Try one more time
-      const retryLinks = document.querySelectorAll('a#thumbnail[href*="/watch"]');
-      if (retryLinks.length > 0) {
-        retryLinks[0].click();
-        sendLog('▶️ Membuka video dari pencarian (retry)', 'success');
-      }
-      return;
     }
     
     // Pick video by index (wrap around)
@@ -385,12 +531,23 @@ async function clickVideoFromSearch() {
     // Get video title for logging
     const renderer = videoElement.closest('ytd-video-renderer');
     const titleEl = renderer ? renderer.querySelector('#video-title') : null;
-    const title = titleEl ? titleEl.textContent.trim().substring(0, 50) : 'Unknown';
+    const title = titleEl ? titleEl.textContent.trim().substring(0, 50) : 'Video';
     
     sendLog(`▶️ Membuka video #${selectedIdx + 1}: "${title}"`, 'success');
     
     // Click the video link
     videoElement.click();
+    
+    // Wait and check if navigation happened (SPA)
+    await sleep(3000);
+    
+    // If we're now on a watch page via SPA navigation, start interaction
+    if (window.location.pathname.includes('/watch')) {
+      lastUrl = window.location.href;
+      await sleep(2000);
+      await runInteractionCycle();
+    }
+    // Otherwise, URL watcher or page reload will handle it
     
   } catch (e) {
     sendLog(`Error memilih video: ${e.message}`, 'error');
@@ -414,6 +571,7 @@ async function clickFirstVideo() {
 
 function stopBot() {
   botRunning = false;
+  stopUrlWatcher();
   if (actionTimeout) {
     clearTimeout(actionTimeout);
     actionTimeout = null;
@@ -432,6 +590,6 @@ chrome.storage.local.get(['isRunning', 'settings', 'comments'], (result) => {
     currentSettings = { ...result.settings, comments: result.comments || [] };
     botRunning = true;
     // Delay to let page fully load
-    setTimeout(() => startBot(), 3000);
+    setTimeout(() => startBot(), 4000);
   }
 });
