@@ -189,9 +189,15 @@ document.getElementById('startBtn').addEventListener('click', () => {
     return;
   }
   
+  const nicheKeyword = document.getElementById('nicheKeyword').value.trim();
+  
   isRunning = true;
   chrome.storage.local.set({ isRunning: true });
   updateUI();
+  
+  if (nicheKeyword) {
+    addLog(`🔍 Niche mode: "${nicheKeyword}"`, 'info');
+  }
   addLog('Bot dimulai! 🚀', 'success');
   
   // Send message to content script
