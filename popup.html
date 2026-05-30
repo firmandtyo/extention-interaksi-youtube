@@ -13,6 +13,7 @@
     <div class="status-bar" id="statusBar">
       <span class="status-dot" id="statusDot"></span>
       <span id="statusText">Tidak Aktif</span>
+      <span id="progressText" class="progress-text"></span>
     </div>
 
     <!-- Settings Section -->
@@ -43,6 +44,11 @@
       <div class="setting-item niche-input">
         <label>🔍 Niche/Keyword:</label>
         <input type="text" id="nicheKeyword" placeholder="contoh: jazz music" class="input-text">
+      </div>
+
+      <div class="setting-item">
+        <label>Jumlah Video (job):</label>
+        <input type="number" id="maxVideos" min="1" max="1000" value="10" class="input-number">
       </div>
 
       <div class="setting-item">

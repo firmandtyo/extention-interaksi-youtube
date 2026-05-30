@@ -33,12 +33,13 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function loadSettings() {
-  chrome.storage.local.get(['settings', 'comments', 'isRunning'], (result) => {
+  chrome.storage.local.get(['settings', 'comments', 'isRunning', 'jobProgress'], (result) => {
     if (result.settings) {
       document.getElementById('autoLike').checked = result.settings.autoLike ?? true;
       document.getElementById('autoComment').checked = result.settings.autoComment ?? true;
       document.getElementById('autoNext').checked = result.settings.autoNext ?? true;
       document.getElementById('nicheKeyword').value = result.settings.nicheKeyword ?? '';
+      document.getElementById('maxVideos').value = result.settings.maxVideos ?? 10;
       document.getElementById('watchDuration').value = result.settings.watchDuration ?? 30;
       document.getElementById('actionDelay').value = result.settings.actionDelay ?? 3;
     }
@@ -48,6 +49,12 @@ function loadSettings() {
     
     isRunning = result.isRunning || false;
     updateUI();
+    
+    // Show progress if running
+    if (isRunning && result.jobProgress) {
+      const max = result.settings?.maxVideos || 10;
+      addLog(`Progress: ${result.jobProgress}/${max} video selesai`, 'info');
+    }
   });
 }
 
@@ -57,6 +64,7 @@ function saveSettings() {
     autoComment: document.getElementById('autoComment').checked,
     autoNext: document.getElementById('autoNext').checked,
     nicheKeyword: document.getElementById('nicheKeyword').value.trim(),
+    maxVideos: parseInt(document.getElementById('maxVideos').value) || 10,
     watchDuration: parseInt(document.getElementById('watchDuration').value) || 30,
     actionDelay: parseInt(document.getElementById('actionDelay').value) || 3
   };
@@ -145,19 +153,47 @@ function updateUI() {
   const stopBtn = document.getElementById('stopBtn');
   const statusDot = document.getElementById('statusDot');
   const statusText = document.getElementById('statusText');
+  const progressText = document.getElementById('progressText');
   
   if (isRunning) {
     startBtn.disabled = true;
     stopBtn.disabled = false;
     statusDot.classList.add('active');
     statusText.textContent = 'Sedang Berjalan...';
+    
+    // Show progress
+    chrome.storage.local.get(['jobProgress', 'settings'], (result) => {
+      const progress = result.jobProgress || 0;
+      const max = result.settings?.maxVideos || 10;
+      progressText.textContent = `${progress}/${max}`;
+    });
   } else {
     startBtn.disabled = false;
     stopBtn.disabled = true;
     statusDot.classList.remove('active');
     statusText.textContent = 'Tidak Aktif';
+    progressText.textContent = '';
   }
 }
+
+// Periodically update progress while running
+setInterval(() => {
+  if (isRunning) {
+    chrome.storage.local.get(['jobProgress', 'settings', 'isRunning'], (result) => {
+      const progressText = document.getElementById('progressText');
+      const progress = result.jobProgress || 0;
+      const max = result.settings?.maxVideos || 10;
+      progressText.textContent = `${progress}/${max}`;
+      
+      // Auto-update UI if bot stopped itself
+      if (!result.isRunning && isRunning) {
+        isRunning = false;
+        updateUI();
+        addLog(`🎉 Job selesai! ${progress}/${max} video diproses`, 'success');
+      }
+    });
+  }
+}, 3000);
 
 // Event Listeners
 document.getElementById('addCommentBtn').addEventListener('click', addComment);
@@ -179,7 +215,7 @@ document.getElementById('clearLogBtn').addEventListener('click', () => {
 });
 
 // Setting change listeners
-['autoLike', 'autoComment', 'autoNext', 'watchDuration', 'actionDelay', 'nicheKeyword'].forEach(id => {
+['autoLike', 'autoComment', 'autoNext', 'watchDuration', 'actionDelay', 'nicheKeyword', 'maxVideos'].forEach(id => {
   document.getElementById(id).addEventListener('change', saveSettings);
 });
 
@@ -215,6 +251,7 @@ document.getElementById('startBtn').addEventListener('click', () => {
           autoComment: document.getElementById('autoComment').checked,
           autoNext: document.getElementById('autoNext').checked,
           nicheKeyword: document.getElementById('nicheKeyword').value.trim(),
+          maxVideos: parseInt(document.getElementById('maxVideos').value) || 10,
           watchDuration: parseInt(document.getElementById('watchDuration').value) || 30,
           actionDelay: parseInt(document.getElementById('actionDelay').value) || 3,
           comments: comments

@@ -4,14 +4,16 @@ let currentSettings = null;
 let actionTimeout = null;
 let urlObserver = null;
 let lastUrl = window.location.href;
+let jobCompleted = 0; // Track how many videos have been processed
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'start') {
     currentSettings = request.settings;
     botRunning = true;
-    // Reset video index when starting fresh
-    chrome.storage.local.set({ videoIndex: 0 });
+    jobCompleted = 0;
+    // Reset video index and job progress when starting fresh
+    chrome.storage.local.set({ videoIndex: 0, jobProgress: 0 });
     startBot();
     sendResponse({ status: 'started' });
   }
@@ -54,6 +56,24 @@ function getVideoIndex() {
 
 function setVideoIndex(idx) {
   chrome.storage.local.set({ videoIndex: idx });
+}
+
+function getJobCompleted() {
+  return new Promise(resolve => {
+    chrome.storage.local.get(['jobProgress'], (result) => {
+      resolve(result.jobProgress || 0);
+    });
+  });
+}
+
+function setJobCompleted(count) {
+  jobCompleted = count;
+  chrome.storage.local.set({ jobProgress: count });
+}
+
+function isJobFinished() {
+  const maxVideos = currentSettings.maxVideos || 10;
+  return jobCompleted >= maxVideos;
 }
 
 // Watch for YouTube SPA navigation (URL changes without page reload)
@@ -147,8 +167,20 @@ async function startBot() {
 }
 
 async function runInteractionCycle() {
+  // Load job progress from storage (in case of page reload)
+  jobCompleted = await getJobCompleted();
+  
   while (botRunning) {
     try {
+      // Check if job is finished
+      if (isJobFinished()) {
+        const maxVideos = currentSettings.maxVideos || 10;
+        sendLog(`✅ Job selesai! ${jobCompleted}/${maxVideos} video sudah diproses`, 'success');
+        stopBot();
+        chrome.storage.local.set({ isRunning: false });
+        break;
+      }
+      
       // Check if we're on a video page
       if (!window.location.pathname.includes('/watch')) {
         if (currentSettings.nicheKeyword) {
@@ -156,7 +188,6 @@ async function runInteractionCycle() {
             await clickVideoFromSearch();
             // Wait for SPA navigation or page reload
             await sleep(5000);
-            // If still not on video page after wait, check again
             if (!window.location.pathname.includes('/watch')) {
               continue;
             }
@@ -174,7 +205,8 @@ async function runInteractionCycle() {
       }
       
       // === NOW ON VIDEO PAGE ===
-      sendLog(`Menonton video selama ${currentSettings.watchDuration} detik...`, 'info');
+      const maxVideos = currentSettings.maxVideos || 10;
+      sendLog(`📊 Video ${jobCompleted + 1}/${maxVideos} - Menonton ${currentSettings.watchDuration} detik...`, 'info');
       
       // Watch the video for specified duration
       await ensureVideoPlaying();
@@ -200,25 +232,34 @@ async function runInteractionCycle() {
       
       if (!botRunning) break;
       
+      // Mark this video as completed
+      jobCompleted++;
+      setJobCompleted(jobCompleted);
+      sendLog(`✓ Video ${jobCompleted}/${maxVideos} selesai!`, 'success');
+      
+      // Check if all jobs done
+      if (isJobFinished()) {
+        sendLog(`🎉 Semua job selesai! ${jobCompleted}/${maxVideos} video diproses`, 'success');
+        stopBot();
+        chrome.storage.local.set({ isRunning: false });
+        break;
+      }
+      
       // Auto Next Video
       if (currentSettings.autoNext) {
         await sleep(currentSettings.actionDelay * 1000);
         await goToNextVideo();
         
         if (currentSettings.nicheKeyword) {
-          // For niche mode: wait for navigation then continue
-          // URL watcher or page reload will handle next cycle
           await sleep(5000);
-          // If URL changed to /results, the watcher handles clicking next video
-          // If URL changed to /watch (direct), continue the loop
           if (window.location.pathname.includes('/watch')) {
-            continue; // New video loaded via SPA
+            continue;
           }
-          return; // Page will reload or watcher handles it
+          return;
         }
         await sleep(5000);
       } else {
-        sendLog('Siklus selesai (auto next tidak aktif)', 'info');
+        sendLog('Auto next tidak aktif, berhenti.', 'info');
         stopBot();
         break;
       }
@@ -585,9 +626,18 @@ function stopBot() {
 }
 
 // Auto-resume if bot was running (handles page reload/navigation)
-chrome.storage.local.get(['isRunning', 'settings', 'comments'], (result) => {
+chrome.storage.local.get(['isRunning', 'settings', 'comments', 'jobProgress'], (result) => {
   if (result.isRunning && result.settings) {
     currentSettings = { ...result.settings, comments: result.comments || [] };
+    jobCompleted = result.jobProgress || 0;
+    
+    // Check if job already finished
+    const maxVideos = currentSettings.maxVideos || 10;
+    if (jobCompleted >= maxVideos) {
+      chrome.storage.local.set({ isRunning: false });
+      return;
+    }
+    
     botRunning = true;
     // Delay to let page fully load
     setTimeout(() => startBot(), 4000);
