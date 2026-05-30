@@ -24,12 +24,13 @@ const DEFAULT_COMMENTS = [
 
 let isRunning = false;
 let logs = [];
+let isConnected = false;
 
 // Load saved settings
 document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   loadLogs();
-  updateUI();
+  checkConnection();
 });
 
 function loadSettings() {
@@ -155,6 +156,9 @@ function updateUI() {
   const statusText = document.getElementById('statusText');
   const progressText = document.getElementById('progressText');
   
+  // Remove all state classes
+  statusDot.classList.remove('active', 'ready', 'disconnected');
+  
   if (isRunning) {
     startBtn.disabled = true;
     stopBtn.disabled = false;
@@ -167,13 +171,68 @@ function updateUI() {
       const max = result.settings?.maxVideos || 10;
       progressText.textContent = `${progress}/${max}`;
     });
-  } else {
+  } else if (isConnected) {
     startBtn.disabled = false;
     stopBtn.disabled = true;
-    statusDot.classList.remove('active');
-    statusText.textContent = 'Tidak Aktif';
+    statusDot.classList.add('ready');
+    statusText.textContent = '🟢 Siap';
+    progressText.textContent = '';
+  } else {
+    startBtn.disabled = true;
+    stopBtn.disabled = true;
+    statusDot.classList.add('disconnected');
+    statusText.textContent = '🔴 Tidak Terhubung';
     progressText.textContent = '';
   }
+}
+
+// Check if content script is active on current YouTube tab
+function checkConnection() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs[0] || !tabs[0].url || !tabs[0].url.includes('youtube.com')) {
+      isConnected = false;
+      updateUI();
+      addLog('Buka YouTube terlebih dahulu!', 'error');
+      return;
+    }
+    
+    // Try to ping the content script
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'ping' }, (response) => {
+      if (chrome.runtime.lastError || !response) {
+        // Content script not ready - try to inject it
+        isConnected = false;
+        updateUI();
+        addLog('Content script belum aktif, menginjeksi...', 'info');
+        
+        chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          files: ['content.js']
+        }, () => {
+          if (chrome.runtime.lastError) {
+            addLog('Gagal inject. Coba refresh halaman YouTube.', 'error');
+          } else {
+            // Wait and re-check
+            setTimeout(() => {
+              chrome.tabs.sendMessage(tabs[0].id, { action: 'ping' }, (resp) => {
+                if (resp && resp.status === 'pong') {
+                  isConnected = true;
+                  updateUI();
+                  addLog('Terhubung! Bot siap dijalankan ✅', 'success');
+                } else {
+                  addLog('Refresh halaman YouTube untuk mengaktifkan.', 'error');
+                  updateUI();
+                }
+              });
+            }, 1500);
+          }
+        });
+      } else {
+        // Content script is ready
+        isConnected = true;
+        updateUI();
+      }
+    });
+  });
 }
 
 // Periodically update progress while running

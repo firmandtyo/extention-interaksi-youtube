@@ -46,10 +46,20 @@ h2 {
   background: #666;
 }
 
+.status-dot.ready {
+  background: #00ff88;
+  box-shadow: 0 0 6px #00ff88;
+}
+
 .status-dot.active {
   background: #00ff88;
   box-shadow: 0 0 8px #00ff88;
   animation: pulse 1.5s infinite;
+}
+
+.status-dot.disconnected {
+  background: #ff4444;
+  box-shadow: 0 0 6px #ff4444;
 }
 
 .progress-text {

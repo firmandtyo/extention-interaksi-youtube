@@ -8,6 +8,10 @@ let jobCompleted = 0; // Track how many videos have been processed
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'ping') {
+    sendResponse({ status: 'pong' });
+    return true;
+  }
   if (request.action === 'start') {
     currentSettings = request.settings;
     botRunning = true;
