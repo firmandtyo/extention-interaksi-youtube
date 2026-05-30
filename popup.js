@@ -1,20 +1,25 @@
-// Default comments list
+// Default comments list (Music Channel - English)
 const DEFAULT_COMMENTS = [
-  "Video yang sangat informatif! Terima kasih sudah berbagi 👍",
-  "Konten yang luar biasa! Terus berkarya 🔥",
-  "Mantap banget, sangat membantu! 🙏",
-  "Keren abis! Auto subscribe deh 🎉",
-  "Penjelasannya sangat jelas dan mudah dipahami 👏",
-  "Selalu konsisten bikin konten berkualitas! 💯",
-  "Video ini exactly yang aku butuhkan, thanks!",
-  "Wah keren banget nih, lanjutkan terus ya! 🚀",
-  "Best channel ever! Selalu bermanfaat 🌟",
-  "Suka banget sama kontennya, sangat edukatif 📚",
-  "Nice video! Keep up the good work 👍",
-  "Materinya sangat bagus dan well explained ✨",
-  "Auto like, auto subscribe! 🎬",
-  "Terima kasih atas ilmunya, sangat berharga! 💎",
-  "The best content creator! Recommended banget 🏆"
+  "This track is absolutely fire! Been on repeat all day 🔥🎶",
+  "The vibes on this one are unmatched. Pure masterpiece 🎵✨",
+  "Goosebumps every single time I listen to this 🙌",
+  "This is the kind of music that heals your soul 💫",
+  "Can't stop listening! This beat is insane 🎧🔥",
+  "The melody is so beautiful, instant classic right here 💎",
+  "This song deserves millions of views. Sharing everywhere! 🚀",
+  "Who else is listening to this in 2025? Still hits different 🎶",
+  "The production quality is top tier. Amazing work! 🏆",
+  "This gives me chills every time. What a vibe 🌊",
+  "Discovered this today and I'm already obsessed 😍🎵",
+  "The vocals are so smooth, can't get enough of this ❤️",
+  "This track just made my whole playlist better 🎧",
+  "Absolutely love the energy in this one! Keep it coming 💪🔥",
+  "This is what real music sounds like. Respect! 🙏🎶",
+  "Perfect song for late night vibes 🌙✨",
+  "The bass on this track hits so hard! Love it 🔊",
+  "Been searching for music like this. Finally found it! 🎉",
+  "This artist never misses. Every release is gold 🥇",
+  "Added to my favorites immediately. What a banger! 💥🎵"
 ];
 
 let isRunning = false;
